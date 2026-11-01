@@ -26,11 +26,11 @@ st.markdown("""
         margin: 5px 0;
         font-size: 14px;
         letter-spacing: 0.5px;
+        white-space: pre-wrap;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# Suas credenciais do Supabase
 SUPABASE_URL = "https://fcicgdrdxszdkyunywiu.supabase.co"
 SUPABASE_KEY = "sb_publishable_tMi8XsWPubFAqXeDpnEN0A_L1x2SJC_"
 
@@ -40,70 +40,45 @@ def init_connection():
 
 supabase = init_connection()
 
-# Função segura para carregar os dados (mesmo se a tabela não existir ou estiver vazia)
 @st.cache_data(ttl=5)
 def carregar_dados():
     try:
-        response = supabase.table("alertas_ea").select("*").order("created_at", desc=True).limit(2000).execute()
+        response = supabase.table("historico_geral").select("*").order("created_at", desc=True).limit(2000).execute()
         return pd.DataFrame(response.data)
     except Exception:
         return pd.DataFrame()
 
-st.title("🔴 Analista Global // Terminal MQL5")
-st.markdown("Monitoramento de alta performance conectado ao banco em nuvem.")
+st.title("🔴 Analista Global // Terminal MQL5 - Histórico Completo")
+st.markdown("Espelho em tempo real de todas as transmissões enviadas pelo EA.")
 
 df = carregar_dados()
 
 if df.empty:
-    # Exibe o terminal em modo de espera aguardando o MT5 ser configurado
     st.markdown("""
         <div class="terminal-box">
-            <div class="code-line">> [SYSTEM] Conexão com Supabase estabelecida com sucesso... [OK]</div>
-            <div class="code-line">> [MQL5_LISTENER] Aguardando integração do EA no MetaTrader 5... [AGUARDANDO]</div>
-            <div class="code-line" style="color: #ffffff;">> [STATUS] Nenhuma tabela de dados encontrada ou registros zerados.</div>
-            <div class="code-line">> [INFO] O painel está ativo e pronto. Assim que atualizar o EA no MT5, os dados aparecerão aqui.</div>
+            <div class="code-line">> [SYSTEM] Conexão com Supabase estabelecida... [OK]</div>
+            <div class="code-line">> [LISTENER] Aguardando disparos de Alertas e Panoramas... [AGUARDANDO]</div>
         </div>
     """, unsafe_allow_html=True)
 else:
-    # Barra lateral de filtros
-    st.sidebar.header("🔍 Filtros do Terminal")
-    ativos_disponiveis = sorted(df["ativo"].unique().tolist()) if "ativo" in df.columns else []
-    ativo_selecionado = st.sidebar.multiselect("Filtrar Ativos:", ativos_disponiveis, default=ativos_disponiveis)
-    
-    # Métricas
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total de Registros", len(df))
+    col1.metric("Total de Registros na Nuvem", len(df))
     col2.metric("Ativos Monitorados", df["ativo"].nunique() if "ativo" in df.columns else 0)
-    col3.metric("Último Sinal", str(df["created_at"].max())[:19] if "created_at" in df.columns and not df.empty else "-")
+    col3.metric("Última Transmissão", str(df["created_at"].max())[:19] if "created_at" in df.columns else "-")
     
     st.markdown("---")
     
-    df_filtrado = df[df["ativo"].isin(ativo_selecionado)] if "ativo" in df.columns else df
-    
-    # Exibição estilo terminal para os últimos alertas
-    st.markdown("### ⚡ Últimas Linhas de Código Registradas")
-    ultimos = df_filtrado.head(5)
-    if not ultimos.empty and "created_at" in ultimos.columns:
-        terminal_html = '<div class="terminal-box">'
-        for index, row in ultimos.iterrows():
-            terminal_html += f'<div class="code-line">> [{row.get("created_at", "-")}] ATIVO: {row.get("ativo", "-")} | ZONA: {row.get("zona_macro", "-")} | PREÇO: {row.get("preco_atual", "-")}</div>'
-        terminal_html += '</div>'
-        st.markdown(terminal_html, unsafe_allow_html=True)
+    st.markdown("### ⚡ Feed de Transmissões em Tempo Real (Telegram & DB)")
+    terminal_html = '<div class="terminal-box">'
+    for index, row in df.head(10).iterrows():
+        tipo_reg = row.get("tipo", "INFO")
+        ativo_reg = row.get("ativo", "GERAL")
+        data_reg = str(row.get("created_at", ""))[:19]
+        msg_reg = row.get("mensagem", "").replace("\n", "<br>")
+        terminal_html += f'<div class="code-line"><b>[{data_reg}] [{tipo_reg}] {ativo_reg}:</b><br>{msg_reg}<br>----------------------------------------</div>'
+    terminal_html += '</div>'
+    st.markdown(terminal_html, unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
-    
-    # Gráficos e Tabelas
-    col_graf, col_tab = st.columns([2, 1])
-    with col_graf:
-        st.subheader("📊 Frequência de Alertas")
-        if not df_filtrado.empty and "ativo" in df_filtrado.columns:
-            fig = px.bar(df_filtrado.groupby("ativo").size().reset_index(name="Quantidade"), 
-                         x="ativo", y="Quantidade", color_discrete_sequence=["#ff4b4b"],
-                         title="Ativos com Maior Incidência")
-            fig.update_layout(plot_bgcolor="#0b0f19", paper_bgcolor="#0b0f19", font_color="white")
-            st.plotly_chart(fig, use_container_width=True)
-            
-    with col_tab:
-        st.subheader("📋 Tabela Bruta")
-        colunas_exibir = [c for c in ["created_at", "ativo", "zona_macro"] if c in df_filtrado.columns]
-        st.dataframe(df_filtrado[colunas_exibir] if colunas_exibir else df_filtrado, height=300)
+    st.subheader("📋 Tabela Completa de Registros")
+    st.dataframe(df, use_container_width=True)
