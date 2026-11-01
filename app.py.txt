@@ -48,7 +48,7 @@ def carregar_dados():
     except Exception:
         return pd.DataFrame()
 
-st.title("🔴 Analista Global // Terminal MQL5 - Histórico Completo")
+st.title("🔴 Analista Global")
 st.markdown("Espelho em tempo real de todas as transmissões enviadas pelo EA.")
 
 df = carregar_dados()
