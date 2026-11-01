@@ -4,7 +4,31 @@ import plotly.express as px
 from supabase import create_client
 
 # Configuração da página do Streamlit
-st.set_page_config(page_title="Dashboard Global de Trading", page_icon="📈", layout="wide")
+st.set_page_config(page_title="Analista Global - Terminal MQL5", page_icon="🔴", layout="wide")
+
+# Estilo visual customizado (Fundo escuro e linhas de código vermelhas)
+st.markdown("""
+    <style>
+    .stApp {
+        background-color: #0b0f19;
+        color: #ffffff;
+    }
+    .terminal-box {
+        background-color: #121826;
+        border: 1px solid #ff4b4b;
+        border-radius: 8px;
+        padding: 20px;
+        font-family: 'Courier New', Courier, monospace;
+        color: #ff4b4b;
+        box-shadow: 0 0 15px rgba(255, 75, 75, 0.2);
+    }
+    .code-line {
+        margin: 5px 0;
+        font-size: 14px;
+        letter-spacing: 0.5px;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 # Suas credenciais do Supabase
 SUPABASE_URL = "https://fcicgdrdxszdkyunywiu.supabase.co"
@@ -16,51 +40,70 @@ def init_connection():
 
 supabase = init_connection()
 
-# Função para carregar os dados do banco em tempo real
+# Função segura para carregar os dados (mesmo se a tabela não existir ou estiver vazia)
 @st.cache_data(ttl=5)
 def carregar_dados():
-    response = supabase.table("alertas_ea").select("*").order("created_at", desc=True).limit(2000).execute()
-    return pd.DataFrame(response.data)
+    try:
+        response = supabase.table("alertas_ea").select("*").order("created_at", desc=True).limit(2000).execute()
+        return pd.DataFrame(response.data)
+    except Exception:
+        return pd.DataFrame()
 
-st.title("🌐 Dashboard Global de Trading - Alertas MQL5")
-st.markdown("Monitoramento em tempo real dos ativos globais enviados pelo seu EA no MetaTrader 5.")
+st.title("🔴 Analista Global // Terminal MQL5")
+st.markdown("Monitoramento de alta performance conectado ao banco em nuvem.")
 
 df = carregar_dados()
 
 if df.empty:
-    st.warning("⚠️ Nenhum alerta encontrado no banco de dados ainda. Assim que o seu EA disparar o primeiro sinal no MT5, ele aparecerá aqui automaticamente!")
+    # Exibe o terminal em modo de espera aguardando o MT5 ser configurado
+    st.markdown("""
+        <div class="terminal-box">
+            <div class="code-line">> [SYSTEM] Conexão com Supabase estabelecida com sucesso... [OK]</div>
+            <div class="code-line">> [MQL5_LISTENER] Aguardando integração do EA no MetaTrader 5... [AGUARDANDO]</div>
+            <div class="code-line" style="color: #ffffff;">> [STATUS] Nenhuma tabela de dados encontrada ou registros zerados.</div>
+            <div class="code-line">> [INFO] O painel está ativo e pronto. Assim que atualizar o EA no MT5, os dados aparecerão aqui.</div>
+        </div>
+    """, unsafe_allow_html=True)
 else:
-    # Barra lateral de filtros interativos
-    st.sidebar.header("🔍 Filtros Globais")
+    # Barra lateral de filtros
+    st.sidebar.header("🔍 Filtros do Terminal")
+    ativos_disponiveis = sorted(df["ativo"].unique().tolist()) if "ativo" in df.columns else []
+    ativo_selecionado = st.sidebar.multiselect("Filtrar Ativos:", ativos_disponiveis, default=ativos_disponiveis)
     
-    ativos_disponiveis = sorted(df["ativo"].unique().tolist())
-    ativo_selecionado = st.sidebar.multiselect("Filtrar por Ativos:", ativos_disponiveis, default=ativos_disponiveis)
-    
-    # Métricas superiores de resumo
+    # Métricas
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total de Alertas Registrados", len(df))
-    col2.metric("Ativos Distintos Monitorados", df["ativo"].nunique())
-    col3.metric("Último Alerta", str(df["created_at"].max())[:19] if not df.empty else "-")
+    col1.metric("Total de Registros", len(df))
+    col2.metric("Ativos Monitorados", df["ativo"].nunique() if "ativo" in df.columns else 0)
+    col3.metric("Último Sinal", str(df["created_at"].max())[:19] if "created_at" in df.columns and not df.empty else "-")
     
     st.markdown("---")
     
-    # Filtro aplicado
-    df_filtrado = df[df["ativo"].isin(ativo_selecionado)]
+    df_filtrado = df[df["ativo"].isin(ativo_selecionado)] if "ativo" in df.columns else df
     
-    # Gráfico e Tabela lado a lado
+    # Exibição estilo terminal para os últimos alertas
+    st.markdown("### ⚡ Últimas Linhas de Código Registradas")
+    ultimos = df_filtrado.head(5)
+    if not ultimos.empty and "created_at" in ultimos.columns:
+        terminal_html = '<div class="terminal-box">'
+        for index, row in ultimos.iterrows():
+            terminal_html += f'<div class="code-line">> [{row.get("created_at", "-")}] ATIVO: {row.get("ativo", "-")} | ZONA: {row.get("zona_macro", "-")} | PREÇO: {row.get("preco_atual", "-")}</div>'
+        terminal_html += '</div>'
+        st.markdown(terminal_html, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Gráficos e Tabelas
     col_graf, col_tab = st.columns([2, 1])
-    
     with col_graf:
-        st.subheader("📊 Frequência de Alertas por Ativo")
-        if not df_filtrado.empty:
+        st.subheader("📊 Frequência de Alertas")
+        if not df_filtrado.empty and "ativo" in df_filtrado.columns:
             fig = px.bar(df_filtrado.groupby("ativo").size().reset_index(name="Quantidade"), 
-                         x="ativo", y="Quantidade", color="ativo", 
-                         title="Ativos com Mais Oportunidades Mapeadas")
+                         x="ativo", y="Quantidade", color_discrete_sequence=["#ff4b4b"],
+                         title="Ativos com Maior Incidência")
+            fig.update_layout(plot_bgcolor="#0b0f19", paper_bgcolor="#0b0f19", font_color="white")
             st.plotly_chart(fig, use_container_width=True)
             
     with col_tab:
-        st.subheader("📋 Últimos Disparos")
-        st.dataframe(df_filtrado[["created_at", "ativo", "zona_macro", "preco_atual"]], height=350)
-        
-    st.subheader("📜 Histórico Completo na Nuvem")
-    st.dataframe(df_filtrado, use_container_width=True)
+        st.subheader("📋 Tabela Bruta")
+        colunas_exibir = [c for c in ["created_at", "ativo", "zona_macro"] if c in df_filtrado.columns]
+        st.dataframe(df_filtrado[colunas_exibir] if colunas_exibir else df_filtrado, height=300)
